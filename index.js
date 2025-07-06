@@ -261,6 +261,19 @@ class DeepgramTTSPlayer {
   }
 }
 
+// Utility functions
+function countWords(text) {
+  return text.trim().split(/\s+/).filter(word => word.length > 0).length;
+}
+
+function truncateToWordLimit(text, wordLimit) {
+  const words = text.trim().split(/\s+/);
+  if (words.length <= wordLimit) {
+    return text;
+  }
+  return words.slice(0, wordLimit).join(' ');
+}
+
 // Command line argument parsing
 function parseArgs() {
   const args = process.argv.slice(2);
@@ -272,7 +285,9 @@ function parseArgs() {
     model: "aura-2-thalia-en",
     verbose: false,
     apiKey: null,
-    text: null
+    text: null,
+    wordLimit: parseInt(process.env.TTALK_WORD_COUNT) || 20,
+    unlimited: false
   };
 
   for (let i = 0; i < args.length; i++) {
@@ -323,6 +338,11 @@ function parseArgs() {
         options.text = args[++i];
         break;
         
+      case '-u':
+      case '--unlimited':
+        options.unlimited = true;
+        break;
+        
       default:
         // If it doesn't start with -, treat it as text
         if (!arg.startsWith('-')) {
@@ -351,12 +371,14 @@ Options:
   -o, --output <file>     Output file path (default: output.mp3)
   -m, --model <model>     Deepgram model to use (default: aura-2-thalia-en)
   -k, --api-key <key>     Deepgram API key (or set DEEPGRAM_API_KEY env var)
+  -u, --unlimited         Allow unlimited word count (bypass word limit)
   -v, --verbose           Enable verbose output
   --no-save               Don't save audio to file (streaming only)
   --no-cleanup            Keep the audio file after playing
 
 Environment Variables:
   DEEPGRAM_API_KEY        Your Deepgram API key
+  TTALK_WORD_COUNT        Maximum number of words for text input (default: 20)
 
 Examples:
   # Basic usage
@@ -376,6 +398,9 @@ Examples:
   
   # With custom API key
   deepgram-tts -k your_api_key "Hello world"
+  
+  # Allow unlimited words
+  deepgram-tts --unlimited "This is a very long text that exceeds the normal 20 word limit"
 
 Available Models:
   - aura-2-thalia-en (default, female)
@@ -408,6 +433,17 @@ async function main() {
       process.exit(1);
     }
 
+    // Apply word limit if configured and not unlimited
+    if (!options.unlimited) {
+      const wordCount = countWords(options.text);
+      if (wordCount > options.wordLimit) {
+        if (options.verbose) {
+          console.log(`Text has ${wordCount} words, truncating to ${options.wordLimit} words`);
+        }
+        options.text = truncateToWordLimit(options.text, options.wordLimit);
+      }
+    }
+
     // Create player instance
     const player = new DeepgramTTSPlayer({
       apiKey: options.apiKey,
@@ -438,6 +474,9 @@ async function main() {
 
 // Run if called directly
 if (require.main === module) {
+  if (process.env.TALKING_AGENT !== '1') {
+    process.exit(0);
+  }
   main();
 }
 
